@@ -2,8 +2,6 @@
 #include <enet.h>
 #include <stdio.h>
 
-// #include <cpstd/cphash.h>
-
 #define ERROR fprintf
 
 #define MAX_CLIENTS 32
@@ -19,9 +17,6 @@ typedef struct {
     int id;
     char *usr_name;
 } client_data;
-// HASHMAP_DEF(int, client_data, client_map_t)
-
-// client_map_t client_map;
 
 client_data clients[MAX_CLIENTS];
 
@@ -61,8 +56,6 @@ void parse_data(ENetHost *server, int id, char *data) {
         sprintf(send_data, "2|%d|%s", id, usr_name);
 
         printf("Send: \"%s\"\n", send_data);
-        // client_map_t_put(&client_map, id,
-        //                  (client_data){.id = id, .usr_name = usr_name});
         clients[id].id = id;
         clients[id].usr_name = strdup(usr_name);
         broadcast_packet(server, send_data);
@@ -74,8 +67,6 @@ void parse_data(ENetHost *server, int id, char *data) {
 }
 
 int main(void) {
-    // client_map_t_init(&client_map, MAX_CLIENTS);
-
     if (enet_initialize()) {
         ERROR(stderr, "Failed to init ENet\n");
         return -1;
@@ -151,6 +142,4 @@ int main(void) {
         }
     }
     enet_host_destroy(server);
-
-    // client_map_t_destroy(&client_map);
 }
