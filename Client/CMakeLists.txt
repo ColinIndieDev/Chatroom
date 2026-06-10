@@ -48,6 +48,8 @@ FetchContent_MakeAvailable(enet)
 
 add_executable(${CMAKE_PROJECT_NAME}
     src/main.c
+    src/client.c
+    src/window.c
 )
 
 # ncurses
