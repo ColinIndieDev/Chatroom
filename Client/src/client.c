@@ -1,14 +1,15 @@
 #include "client.h"
 #include "window.h"
 
-#include <stdio.h>
 #include <pthread.h>
+#include <stdio.h>
 
 ENetHost *client = NULL;
 ENetAddress address;
 ENetEvent event;
 ENetPeer *peer = NULL;
 pthread_t msg_thread;
+bool running = true;
 
 char usrname[80];
 int client_id = -1;
@@ -19,12 +20,12 @@ void send_packet(ENetPeer *peer, char *data) {
     enet_peer_send(peer, 0, packet);
 }
 
-void parse_data(char *data, client_data **clients) {
+void parse_data(char *data, client_map *clients) {
     int type = 0;
     int id = 0;
 
     if (sscanf(data, "%d|%d", &type, &id) < 2) {
-        return; 
+        return;
     }
 
     if (id < 0 || id >= MAX_CLIENTS) {
@@ -36,23 +37,35 @@ void parse_data(char *data, client_data **clients) {
         if (id != client_id) {
             char msg[80];
             sscanf(data, "%*d|%*d|%79[^\n]", msg);
-            print_msg(clients[id]->usr_name, msg);
+            print_msg((*client_map_get(clients, id))->usr_name, msg);
         }
         break;
     case PACKET_JOIN:
         if (id != client_id) {
             char new_usr[80];
-            sscanf(data, "%*d|%*d|%s", new_usr);
+            sscanf(data, "%*d|%*d|%79[^\n]", new_usr);
 
             client_data *new_client = malloc(sizeof(client_data));
             new_client->id = id;
-            new_client->usr_name = strdup(new_usr);;
-            clients[id] = new_client;
+            new_client->usr_name = strdup(new_usr);
+            client_map_put(clients, id, new_client);
+
+            char msg[126];
+            snprintf(msg, sizeof(msg), "%s joined", new_usr);
+            print_announcement(msg);
         }
         break;
     case PACKET_RECEIVE:
         client_id = id;
         break;
+    case PACKET_DISCONNECT: {
+        char msg[126];
+        snprintf(msg, sizeof(msg), "%s left",
+                 (*client_map_get(clients, id))->usr_name);
+        print_announcement(msg);
+        client_map_remove(clients, id);
+        break;
+    }
     default:
         break;
     }
@@ -60,7 +73,7 @@ void parse_data(char *data, client_data **clients) {
 
 void *msg_loop(void *arg) {
     thread_data *data = (thread_data *)arg;
-    while (1) {
+    while (running) {
         ENetEvent event;
         while (enet_host_service(data->client, &event, 0) > 0) {
             if (event.type == ENET_EVENT_TYPE_RECEIVE) {
@@ -73,7 +86,7 @@ void *msg_loop(void *arg) {
     return NULL;
 }
 
-void client_init(client_data **clients) {
+void client_init(client_map *clients) {
     if (enet_initialize()) {
         ERROR(stderr, "Failed to init ENet\n");
         exit(-1);
@@ -103,7 +116,7 @@ void client_init(client_data **clients) {
         printf("Connection failed\n");
         exit(0);
     }
-    
+
     thread_data *data = malloc(sizeof(thread_data));
     data->clients = clients;
     data->client = client;
@@ -111,6 +124,7 @@ void client_init(client_data **clients) {
 }
 
 void client_destroy() {
+    running = false;
     pthread_cancel(msg_thread);
     pthread_join(msg_thread, NULL);
 
@@ -120,7 +134,9 @@ void client_destroy() {
             enet_packet_destroy(event.packet);
         } else if (event.type == ENET_EVENT_TYPE_DISCONNECT) {
             printf("Disconnection successful\n");
+            break;
         }
     }
-
+    free(client);
+    free(peer);
 }

@@ -1,30 +1,32 @@
 #define ENET_IMPLEMENTATION
 #include <enet.h>
 
+#include <ncurses.h>
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <pthread.h>
-#include <ncurses.h>
+
+#include <cpstd/cphash.h>
 
 #include "client.h"
 #include "window.h"
 
 EXTERN_CLIENT_H_VARIABLES
 
-client_data *clients[MAX_CLIENTS];
+HASHMAP_IMPL(int, client_data *, client_map)
+
+client_map clients;
 
 void program();
 
 int main(void) {
-    for (int i = 0; i < MAX_CLIENTS; i++) {
-        clients[i] = NULL;
-    }
+    client_map_init(&clients, MAX_CLIENTS);
 
-    printf("Please enter your username below (no spaces!):\n");
-    scanf("%s", usrname);
+    printf("Please enter your username below:\n");
+    scanf("%79[^\n]", usrname);
 
-    client_init(clients);
+    client_init(&clients);
 
     char usr_data[80] = "2|";
     strcat(usr_data, usrname);
@@ -32,6 +34,13 @@ int main(void) {
 
     program();
 
+    FOREACH_HM(client_map, client, &clients) {
+        if (client->state == HASH_OCCUPIED) {
+            free(client->value->usr_name);
+            free(client->value);
+        }
+    }
+    client_map_destroy(&clients);
     client_destroy();
 }
 
@@ -43,10 +52,28 @@ void program() {
             free(msg);
             break;
         }
+        if (strcmp(msg, "/id") == 0) {
+            free(msg);
+            char id_msg[16];
+            snprintf(id_msg, sizeof(id_msg), "My ID=%d", client_id);
+            print_announcement(id_msg);
+            continue;
+        }
+        if (strcmp(msg, "/id_share") == 0) {
+            free(msg);
+            char id_msg[16];
+            snprintf(id_msg, sizeof(id_msg), "My ID=%d", client_id);
+            print_msg(usrname, id_msg);
+
+            char msg_data[80] = "1|";
+            strcat(msg_data, id_msg);
+            send_packet(peer, msg_data);
+            continue;
+        }
         print_msg(usrname, msg);
 
         char msg_data[80] = "1|";
-        snprintf(msg_data, sizeof(msg_data), "1|%s", msg);
+        strcat(msg_data, msg);
         send_packet(peer, msg_data);
 
         free(msg);

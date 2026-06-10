@@ -1,6 +1,10 @@
+#include <string.h>
+#include <stdio.h>
+
 #define ENET_IMPLEMENTATION
 #include <enet.h>
-#include <stdio.h>
+
+#include <cpstd/cphash.h>
 
 #define ERROR fprintf
 
@@ -10,7 +14,8 @@ typedef enum {
     PACKET_BROADCAST = 1,
     PACKET_JOIN,
     PACKET_RECEIVE,
-    PACKET_DISCONNECT
+    PACKET_DISCONNECT,
+    PACKET_ANNOUNCEMENT
 } packet_types;
 
 typedef struct {
@@ -18,7 +23,8 @@ typedef struct {
     char *usr_name;
 } client_data;
 
-client_data clients[MAX_CLIENTS];
+HASHMAP_DEF(int, client_data *, client_map)
+client_map clients;
 
 void broadcast_packet(ENetHost *server, char *data) {
     ENetPacket *packet =
@@ -44,20 +50,22 @@ void parse_data(ENetHost *server, int id, char *data) {
         sscanf(data, "%*d|%79[^\n]", msg);
 
         char send_data[1024] = {'\0'};
-        sprintf(send_data, "1|%d|%s", id, msg);
+        snprintf(send_data, sizeof(send_data), "1|%d|%s", id, msg);
         broadcast_packet(server, send_data);
         break;
     }
     case PACKET_JOIN: {
         char usr_name[80];
-        sscanf(data, "2|%s", usr_name);
+        sscanf(data, "2|%79[^\n]", usr_name);
 
         char send_data[1024] = {'\0'};
-        sprintf(send_data, "2|%d|%s", id, usr_name);
+        snprintf(send_data, sizeof(send_data), "2|%d|%s", id, usr_name);
 
         printf("Send: \"%s\"\n", send_data);
-        clients[id].id = id;
-        clients[id].usr_name = strdup(usr_name);
+        client_data *new_client = malloc(sizeof(client_data));
+        new_client->id = id;
+        new_client->usr_name = strdup(usr_name);
+        client_map_put(&clients, id, new_client);
         broadcast_packet(server, send_data);
         break;
     }
@@ -67,6 +75,11 @@ void parse_data(ENetHost *server, int id, char *data) {
 }
 
 int main(void) {
+    client_map_init(&clients, MAX_CLIENTS);
+    for (int i = 0; i < MAX_CLIENTS; i++) {
+        client_map_put(&clients, i, NULL);
+    }
+
     if (enet_initialize()) {
         ERROR(stderr, "Failed to init ENet\n");
         return -1;
@@ -83,7 +96,6 @@ int main(void) {
         return -1;
     }
 
-    int new_usr_id = 0;
     while (1) {
         ENetEvent event;
         while (enet_host_service(server, &event, 1000) > 0) {
@@ -98,21 +110,41 @@ int main(void) {
                 printf("A new client connected from %s:%u.\n", display_ip,
                        event.peer->address.port);
 
+                int assigned_id = -1;
                 for (int i = 0; i < MAX_CLIENTS; i++) {
-                    char send_data[1024] = {'\0'};
-                    if (clients[i].usr_name) {
-                        sprintf(send_data, "2|%d|%s", i, clients[i].usr_name);
-                        broadcast_packet(server, send_data);
+                    client_data **slot = client_map_get(&clients, i);
+                    if (slot == NULL || *slot == NULL) {
+                        assigned_id = i;
+                        break;
                     }
                 }
-                new_usr_id++;
-                clients[new_usr_id].id = new_usr_id;
-                event.peer->data = &clients[new_usr_id];
+
+                if (assigned_id == -1) {
+                    printf("Server is full!\n");
+                    enet_peer_reset(event.peer);
+                    break;
+                }
+
+                for (int i = 0; i < MAX_CLIENTS; i++) {
+                    client_data **existing = client_map_get(&clients, i);
+                    if (existing && *existing &&
+                        (*existing)->usr_name != NULL) {
+                        char send_data[1024] = {'\0'};
+                        snprintf(send_data, sizeof(send_data), "2|%d|%s", i,
+                                 (*existing)->usr_name);
+                        send_packet(event.peer, send_data);
+                    }
+                }
+
+                client_data *new_client = malloc(sizeof(client_data));
+                new_client->id = assigned_id;
+                new_client->usr_name = NULL;
+                client_map_put(&clients, assigned_id, new_client);
+                event.peer->data = new_client;
 
                 char send_data[126] = {'\0'};
-                sprintf(send_data, "3|%d", new_usr_id);
+                snprintf(send_data, sizeof(send_data), "3|%d", assigned_id);
                 send_packet(event.peer, send_data);
-
                 break;
             }
             case ENET_EVENT_TYPE_RECEIVE: {
@@ -131,8 +163,10 @@ int main(void) {
                 printf("%s disconnected.\n", (char *)event.peer->data);
                 char disconnected_data[126] = {'\0'};
                 client_data *client = event.peer->data;
-                sprintf(disconnected_data, "4|%d", client->id);
+                snprintf(disconnected_data, sizeof(disconnected_data), "4|%d",
+                         client->id);
                 broadcast_packet(server, disconnected_data);
+                client_map_remove(&clients, client->id);
                 event.peer->data = NULL;
                 break;
             }
@@ -141,5 +175,12 @@ int main(void) {
             }
         }
     }
+
     enet_host_destroy(server);
+    FOREACH_HM(client_map, client, &clients) {
+        if (client->state == HASH_OCCUPIED) {
+            free(client->value->usr_name);
+            free(client->value);
+        }
+    }
 }
