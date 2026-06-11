@@ -30,7 +30,6 @@ typedef struct {
 } thread_data;
 
 void send_packet(ENetPeer *peer, char *data);
-void parse_data(char *data, client_map *clients);
 
 void client_init(client_map *clients);
-void client_destroy();
+void client_destroy(client_map *clients);

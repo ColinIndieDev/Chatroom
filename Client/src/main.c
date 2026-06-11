@@ -18,11 +18,9 @@ HASHMAP_IMPL(int, client_data *, client_map)
 
 client_map clients;
 
-void program();
+void program_loop();
 
 int main(void) {
-    client_map_init(&clients, MAX_CLIENTS);
-
     printf("Please enter your username below:\n");
     scanf("%79[^\n]", usrname);
 
@@ -32,19 +30,12 @@ int main(void) {
     strcat(usr_data, usrname);
     send_packet(peer, usr_data);
 
-    program();
+    program_loop();
 
-    FOREACH_HM(client_map, client, &clients) {
-        if (client->state == HASH_OCCUPIED) {
-            free(client->value->usr_name);
-            free(client->value);
-        }
-    }
-    client_map_destroy(&clients);
-    client_destroy();
+    client_destroy(&clients);
 }
 
-void program() {
+void program_loop() {
     screen_init();
     while (1) {
         char *msg = check_msg_input();

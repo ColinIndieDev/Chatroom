@@ -86,7 +86,47 @@ void *msg_loop(void *arg) {
     return NULL;
 }
 
+char *read_file_to_string(char *name) {
+    FILE *file = fopen(name, "rb");
+    if (!file) {
+        return NULL;
+    }
+
+    if (fseek(file, 0, SEEK_END) != 0) {
+        fclose(file);
+        return NULL;
+    }
+    long file_size = ftell(file);
+    if (file_size == -1) {
+        fclose(file);
+        return NULL;
+    }
+    if (fseek(file, 0, SEEK_SET) != 0) {
+        fclose(file);
+        return NULL;
+    }
+
+    char *buffer = malloc(file_size + 1);
+    if (!buffer) {
+        fclose(file);
+        return NULL;
+    }
+
+    size_t bytes_read = fread(buffer, 1, file_size, file);
+    if (bytes_read != file_size) {
+        free(buffer);
+        fclose(file);
+        return NULL;
+    }
+
+    buffer[file_size] = '\0';
+    fclose(file);
+    return buffer;
+}
+
 void client_init(client_map *clients) {
+    client_map_init(clients, MAX_CLIENTS);
+
     if (enet_initialize()) {
         ERROR(stderr, "Failed to init ENet\n");
         exit(-1);
@@ -99,7 +139,14 @@ void client_init(client_map *clients) {
         exit(-1);
     }
 
-    enet_address_set_host(&address, "127.0.0.1");
+    char *ip = read_file_to_string("ip.txt");
+    if (!ip) {
+        ERROR(stderr, "Cannot read ip in \"ip.txt\"\n");
+        exit(-1);
+    }
+    ip[strcspn(ip, "\r\n")] = '\0';
+
+    enet_address_set_host(&address, ip);
     address.port = 7777;
 
     peer = enet_host_connect(client, &address, 1, 0);
@@ -123,7 +170,15 @@ void client_init(client_map *clients) {
     pthread_create(&msg_thread, NULL, msg_loop, (void *)data);
 }
 
-void client_destroy() {
+void client_destroy(client_map *clients) {
+    FOREACH_HM(client_map, client, clients) {
+        if (client->state == HASH_OCCUPIED) {
+            free(client->value->usr_name);
+            free(client->value);
+        }
+    }
+    client_map_destroy(clients);
+
     running = false;
     pthread_cancel(msg_thread);
     pthread_join(msg_thread, NULL);

@@ -48,6 +48,7 @@ FetchContent_MakeAvailable(enet)
 
 add_executable(${CMAKE_PROJECT_NAME}
     src/main.c
+    src/server.c
 )
 
 # Enet
