@@ -20,15 +20,17 @@ client_map clients;
 
 void program_loop();
 
+void send_msg(char *msg);
+void send_id();
+void send_usr();
+
 int main(void) {
     printf("Please enter your username below:\n");
     scanf("%79[^\n]", usrname);
 
     client_init(&clients);
 
-    char usr_data[80] = "2|";
-    strcat(usr_data, usrname);
-    send_packet(peer, usr_data);
+    send_usr();
 
     program_loop();
 
@@ -36,7 +38,7 @@ int main(void) {
 }
 
 void program_loop() {
-    screen_init();
+    screen_init(usrname);
     while (1) {
         char *msg = check_msg_input();
         if (strcmp(msg, "/exit") == 0) {
@@ -52,22 +54,52 @@ void program_loop() {
         }
         if (strcmp(msg, "/id_share") == 0) {
             free(msg);
-            char id_msg[16];
-            snprintf(id_msg, sizeof(id_msg), "My ID=%d", client_id);
-            print_msg(usrname, id_msg);
-
-            char msg_data[80] = "1|";
-            strcat(msg_data, id_msg);
-            send_packet(peer, msg_data);
+            send_id();
             continue;
         }
-        print_msg(usrname, msg);
-
-        char msg_data[80] = "1|";
-        strcat(msg_data, msg);
-        send_packet(peer, msg_data);
-
-        free(msg);
+        print_msg("You", msg);
+        send_msg(msg);
     }
     screen_close();
+}
+
+void send_msg(char *msg) {
+    char msg_data[80] = "1|";
+    char encrypted_msg[100] = {'\0'};
+    encrypt_decrypt(msg, encrypted_msg, strlen(msg));
+    char hex_buffer[160] = {'\0'};
+    for (size_t i = 0; i < strlen(msg); i++) {
+        sprintf(hex_buffer + (i * 2), "%02x", (unsigned char)encrypted_msg[i]);
+    }
+    free(msg);
+    strcat(msg_data, hex_buffer);
+    send_packet(peer, msg_data);
+}
+
+void send_id() {
+    char id_msg[16];
+    snprintf(id_msg, sizeof(id_msg), "My ID=%d", client_id);
+    print_msg(usrname, id_msg);
+
+    char msg_data[80] = "1|";
+    char encrypted_msg[16];
+    encrypt_decrypt(id_msg, encrypted_msg, strlen(id_msg));
+    char hex_buffer[160] = {'\0'};
+    for (size_t i = 0; i < strlen(id_msg); i++) {
+        sprintf(hex_buffer + (i * 2), "%02x", (unsigned char)encrypted_msg[i]);
+    }
+    strcat(msg_data, hex_buffer);
+    send_packet(peer, msg_data);
+}
+
+void send_usr() {
+    char usr_data[80] = "2|";
+    char encrypted[80];
+    encrypt_decrypt(usrname, encrypted, strlen(usrname));
+    char hex_buffer[160] = {'\0'};
+    for (size_t i = 0; i < strlen(usrname); i++) {
+        sprintf(hex_buffer + (i * 2), "%02x", (unsigned char)encrypted[i]);
+    }
+    strcat(usr_data, hex_buffer);
+    send_packet(peer, usr_data);
 }

@@ -11,6 +11,8 @@ ENetPeer *peer = NULL;
 pthread_t msg_thread;
 bool running = true;
 
+char *chat_key = NULL;
+
 char usrname[80];
 int client_id = -1;
 
@@ -35,16 +37,32 @@ void parse_data(char *data, client_map *clients) {
     switch (type) {
     case PACKET_BROADCAST:
         if (id != client_id) {
-            char msg[80];
-            sscanf(data, "%*d|%*d|%79[^\n]", msg);
-            print_msg((*client_map_get(clients, id))->usr_name, msg);
+            char received_hex[160];
+            sscanf(data, "%*d|%*d|%159[^\n]", received_hex);
+            char encrypted_msg[80] = {'\0'};
+            for (size_t i = 0; i < strlen(received_hex) / 2; i++) {
+                unsigned int byte;
+                sscanf(received_hex + (i * 2), "%02x", &byte);
+                encrypted_msg[i] = (char)byte;
+            }
+            char decrypted_msg[80];
+            encrypt_decrypt(encrypted_msg, decrypted_msg,
+                            strlen(encrypted_msg));
+            print_msg((*client_map_get(clients, id))->usr_name, decrypted_msg);
         }
         break;
     case PACKET_JOIN:
         if (id != client_id) {
+            char received_hex[160];
+            char encrypted[80] = {'\0'};
             char new_usr[80];
-            sscanf(data, "%*d|%*d|%79[^\n]", new_usr);
-
+            sscanf(data, "%*d|%*d|%159[^\n]", received_hex);
+            for (size_t i = 0; i < strlen(received_hex) / 2; i++) {
+                unsigned int byte;
+                sscanf(received_hex + (i * 2), "%02x", &byte);
+                encrypted[i] = (char)byte;
+            }
+            encrypt_decrypt(encrypted, new_usr, strlen(encrypted));
             client_data *new_client = malloc(sizeof(client_data));
             new_client->id = id;
             new_client->usr_name = strdup(new_usr);
@@ -124,6 +142,17 @@ char *read_file_to_string(char *name) {
     return buffer;
 }
 
+void encrypt_decrypt(const char *in, char *out, size_t len) {
+    size_t key_len = strlen(chat_key);
+    for (int i = 0; i < len; i++) {
+        out[i] = (char)(in[i] ^ chat_key[i % key_len]);
+        if (out[i] == '\0') {
+            out[i] = in[i];
+        }
+    }
+    out[len] = '\0';
+}
+
 void client_init(client_map *clients) {
     client_map_init(clients, MAX_CLIENTS);
 
@@ -146,7 +175,15 @@ void client_init(client_map *clients) {
     }
     ip[strcspn(ip, "\r\n")] = '\0';
 
+    chat_key = read_file_to_string("chat_key.txt");
+    if (!chat_key) {
+        ERROR(stderr, "Cannot read key in \"chat_key.txt\"\n");
+        exit(-1);
+    }
+    chat_key[strcspn(chat_key, "\r\n")] = '\0';
+
     enet_address_set_host(&address, ip);
+    free(ip);
     address.port = 7777;
 
     peer = enet_host_connect(client, &address, 1, 0);
@@ -192,6 +229,7 @@ void client_destroy(client_map *clients) {
             break;
         }
     }
+    free(chat_key);
     free(client);
     free(peer);
 }
