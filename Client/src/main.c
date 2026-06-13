@@ -14,9 +14,9 @@
 
 EXTERN_CLIENT_H_VARIABLES
 
-HASHMAP_IMPL(int, client_data *, client_map)
+// HASHMAP_IMPL(int, client_data *, client_map)
 
-client_map clients;
+client_map *clients = NULL;
 
 void program_loop();
 
