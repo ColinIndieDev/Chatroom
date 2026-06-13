@@ -1,7 +1,14 @@
 #include "server.h"
 
+#include <signal.h>
+
 ENetAddress address;
 ENetHost *server = NULL;
+volatile sig_atomic_t server_running = 1;
+
+void handle_sigint([[maybe_unused]] int sig) {
+    server_running = 0;
+}
 
 void broadcast_packet(ENetHost *server, char *data) {
     ENetPacket *packet =
@@ -16,7 +23,7 @@ void send_packet(ENetPeer *peer, char *data) {
 }
 
 void parse_data(ENetHost *server, int id, char *data, client_map *clients) {
-    printf("Parsing \"%s\"...\n", data);
+    printf("Parsing...\n");
 
     int type = 0;
     sscanf(data, "%d|", &type);
@@ -38,7 +45,7 @@ void parse_data(ENetHost *server, int id, char *data, client_map *clients) {
         char send_data[1024] = {'\0'};
         snprintf(send_data, sizeof(send_data), "2|%d|%s", id, usr_name);
 
-        printf("Send: \"%s\"\n", send_data);
+        printf("Sending...\n");
         client_data *new_client = malloc(sizeof(client_data));
         new_client->id = id;
         new_client->usr_name = strdup(usr_name);
@@ -63,6 +70,8 @@ void server_init(client_map *clients) {
     }
     atexit(enet_deinitialize);
 
+    signal(SIGINT, handle_sigint);
+
     address.host = ENET_HOST_ANY;
     address.port = 7777;
 
@@ -74,7 +83,7 @@ void server_init(client_map *clients) {
 }
 
 void server_loop(client_map *clients) {
-    while (1) {
+    while (server_running) {
         ENetEvent event;
         while (enet_host_service(server, &event, 1000) > 0) {
             switch (event.type) {
@@ -85,7 +94,7 @@ void server_loop(client_map *clients) {
                 if (strncmp(ip, "::ffff:", 7) == 0) {
                     display_ip = ip + 7;
                 }
-                printf("A new client connected from %s:%u.\n", display_ip,
+                printf("A new client connected from %s:%u!\n", display_ip,
                        event.peer->address.port);
 
                 int assigned_id = -1;
@@ -126,20 +135,18 @@ void server_loop(client_map *clients) {
                 break;
             }
             case ENET_EVENT_TYPE_RECEIVE: {
-                printf(
-                    "A packet of length %u containing \"%s\" was received from "
-                    "%s on channel %u.\n",
-                    (unsigned int)event.packet->dataLength, event.packet->data,
-                    (char *)event.peer->data, event.channelID);
+                printf("A packet of length %u was received on channel %u!\n",
+                       (unsigned int)event.packet->dataLength, event.channelID);
 
                 client_data *client = event.peer->data;
-                parse_data(server, client->id, (char *)event.packet->data, clients);
+                parse_data(server, client->id, (char *)event.packet->data,
+                           clients);
                 enet_packet_destroy(event.packet);
                 break;
             }
             case ENET_EVENT_TYPE_DISCONNECT: {
                 client_data *client = event.peer->data;
-                printf("%s disconnected.\n",
+                printf("%s disconnected!\n",
                        (*client_map_get(clients, client->id))->usr_name);
                 char disconnected_data[126] = {'\0'};
                 snprintf(disconnected_data, sizeof(disconnected_data), "4|%d",
@@ -157,6 +164,21 @@ void server_loop(client_map *clients) {
 }
 
 void server_destroy(client_map *clients) {
+    printf("Server shutting down...\n");
+
+    char data[] = "5|0";
+    broadcast_packet(server, data);
+
+    enet_host_flush(server);
+    usleep(500000);
+
+    for (int i = 0; i < MAX_CLIENTS; i++) {
+        client_data **client = client_map_get(clients, i);
+        if (client && *client) {
+            enet_peer_disconnect_now(server->peers, 0); 
+        }
+    }
+
     enet_host_destroy(server);
     FOREACH_HM(client_map, client, clients) {
         if (client->state == HASH_OCCUPIED) {

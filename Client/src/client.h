@@ -15,14 +15,17 @@ typedef enum {
     PACKET_BROADCAST = 1,
     PACKET_JOIN,
     PACKET_RECEIVE,
-    PACKET_DISCONNECT
+    PACKET_DISCONNECT,
+    PACKET_SERVER_SHUTDOWN
 } packet_types;
 
 typedef struct {
     int id;
     char *usr_name;
 } client_data;
-HASHMAP_DECL(int, client_data *, client_map)
+
+// HASHMAP_DECL(int, client_data *, client_map)
+typedef void client_map;
 
 typedef struct {
     ENetHost *client;
@@ -32,5 +35,5 @@ typedef struct {
 void send_packet(ENetPeer *peer, char *data);
 void encrypt_decrypt(const char *in, char *out, size_t len);
 
-void client_init(client_map *clients);
-void client_destroy(client_map *clients);
+void client_init(client_map **clients);
+void client_destroy(client_map **clients);

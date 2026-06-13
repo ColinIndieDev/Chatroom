@@ -12,7 +12,7 @@ typedef enum {
     PACKET_JOIN,
     PACKET_RECEIVE,
     PACKET_DISCONNECT,
-    PACKET_ANNOUNCEMENT
+    PACKET_SERVER_SHUTDOWN
 } packet_types;
 
 typedef struct {
