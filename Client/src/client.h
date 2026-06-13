@@ -24,7 +24,6 @@ typedef struct {
     char *usr_name;
 } client_data;
 
-// HASHMAP_DECL(int, client_data *, client_map)
 typedef void client_map;
 
 typedef struct {

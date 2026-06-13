@@ -43,18 +43,19 @@ void parse_data(char *data, client_map **clients) {
     switch (type) {
     case PACKET_BROADCAST:
         if (id != client_id) {
-            char received_hex[160];
+            char received_hex[620] = {'\0'};
             sscanf(data, "%*d|%*d|%159[^\n]", received_hex);
-            char encrypted_msg[80] = {'\0'};
+            char encrypted_msg[320] = {'\0'};
             for (size_t i = 0; i < strlen(received_hex) / 2; i++) {
                 unsigned int byte;
                 sscanf(received_hex + (i * 2), "%02x", &byte);
                 encrypted_msg[i] = (char)byte;
             }
-            char decrypted_msg[80];
+            char decrypted_msg[320];
             encrypt_decrypt(encrypted_msg, decrypted_msg,
                             strlen(encrypted_msg));
-            print_msg((*client_map_real_get(*clients, id))->usr_name, decrypted_msg);
+            print_msg((*client_map_real_get(*clients, id))->usr_name,
+                      decrypted_msg);
         }
         break;
     case PACKET_JOIN:

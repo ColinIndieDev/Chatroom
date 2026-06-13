@@ -14,8 +14,6 @@
 
 EXTERN_CLIENT_H_VARIABLES
 
-// HASHMAP_IMPL(int, client_data *, client_map)
-
 client_map *clients = NULL;
 
 void program_loop();
@@ -64,10 +62,10 @@ void program_loop() {
 }
 
 void send_msg(char *msg) {
-    char msg_data[80] = "1|";
-    char encrypted_msg[100] = {'\0'};
+    char msg_data[700] = "1|";
+    char encrypted_msg[320] = {'\0'};
     encrypt_decrypt(msg, encrypted_msg, strlen(msg));
-    char hex_buffer[160] = {'\0'};
+    char hex_buffer[620] = {'\0'};
     for (size_t i = 0; i < strlen(msg); i++) {
         sprintf(hex_buffer + (i * 2), "%02x", (unsigned char)encrypted_msg[i]);
     }
