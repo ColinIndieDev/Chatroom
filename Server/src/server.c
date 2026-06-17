@@ -1,14 +1,13 @@
 #include "server.h"
 
+#include <cpstd/cphash.h>
 #include <signal.h>
 
 ENetAddress address;
 ENetHost *server = NULL;
 volatile sig_atomic_t server_running = 1;
 
-void handle_sigint([[maybe_unused]] int sig) {
-    server_running = 0;
-}
+void handle_sigint([[maybe_unused]] int sig) { server_running = 0; }
 
 void broadcast_packet(ENetHost *server, char *data) {
     ENetPacket *packet =
@@ -22,7 +21,7 @@ void send_packet(ENetPeer *peer, char *data) {
     enet_peer_send(peer, 0, packet);
 }
 
-void parse_data(ENetHost *server, int id, char *data, client_map *clients) {
+void parse_data(ENetHost *server, int id, char *data, client_entry **clients) {
     printf("Parsing...\n");
 
     int type = 0;
@@ -49,7 +48,7 @@ void parse_data(ENetHost *server, int id, char *data, client_map *clients) {
         client_data *new_client = malloc(sizeof(client_data));
         new_client->id = id;
         new_client->usr_name = strdup(usr_name);
-        client_map_put(clients, id, new_client);
+        hm_put(*clients, id, new_client);
         broadcast_packet(server, send_data);
         break;
     }
@@ -58,10 +57,10 @@ void parse_data(ENetHost *server, int id, char *data, client_map *clients) {
     }
 }
 
-void server_init(client_map *clients) {
-    client_map_init(clients, MAX_CLIENTS);
+void server_init(client_entry **clients) {
+    *clients = hm_init(*clients, MAX_CLIENTS);
     for (int i = 0; i < MAX_CLIENTS; i++) {
-        client_map_put(clients, i, NULL);
+        hm_put(*clients, i, NULL);
     }
 
     if (enet_initialize()) {
@@ -82,7 +81,7 @@ void server_init(client_map *clients) {
     }
 }
 
-void server_loop(client_map *clients) {
+void server_loop(client_entry **clients) {
     while (server_running) {
         ENetEvent event;
         while (enet_host_service(server, &event, 1000) > 0) {
@@ -99,7 +98,7 @@ void server_loop(client_map *clients) {
 
                 int assigned_id = -1;
                 for (int i = 0; i < MAX_CLIENTS; i++) {
-                    client_data **slot = client_map_get(clients, i);
+                    client_data **slot = hm_get(*clients, i);
                     if (slot == NULL || *slot == NULL) {
                         assigned_id = i;
                         break;
@@ -113,7 +112,7 @@ void server_loop(client_map *clients) {
                 }
 
                 for (int i = 0; i < MAX_CLIENTS; i++) {
-                    client_data **existing = client_map_get(clients, i);
+                    client_data **existing = hm_get(*clients, i);
                     if (existing && *existing &&
                         (*existing)->usr_name != NULL) {
                         char send_data[1024] = {'\0'};
@@ -126,7 +125,7 @@ void server_loop(client_map *clients) {
                 client_data *new_client = malloc(sizeof(client_data));
                 new_client->id = assigned_id;
                 new_client->usr_name = NULL;
-                client_map_put(clients, assigned_id, new_client);
+                hm_put(*clients, assigned_id, new_client);
                 event.peer->data = new_client;
 
                 char send_data[126] = {'\0'};
@@ -147,12 +146,12 @@ void server_loop(client_map *clients) {
             case ENET_EVENT_TYPE_DISCONNECT: {
                 client_data *client = event.peer->data;
                 printf("%s disconnected!\n",
-                       (*client_map_get(clients, client->id))->usr_name);
+                       (*hm_get(*clients, client->id))->usr_name);
                 char disconnected_data[126] = {'\0'};
                 snprintf(disconnected_data, sizeof(disconnected_data), "4|%d",
                          client->id);
                 broadcast_packet(server, disconnected_data);
-                client_map_remove(clients, client->id);
+                hm_remove(*clients, client->id);
                 event.peer->data = NULL;
                 break;
             }
@@ -163,7 +162,7 @@ void server_loop(client_map *clients) {
     }
 }
 
-void server_destroy(client_map *clients) {
+void server_destroy(client_entry **clients) {
     printf("Server shutting down...\n");
 
     char data[] = "5|0";
@@ -173,15 +172,15 @@ void server_destroy(client_map *clients) {
     usleep(500000);
 
     for (int i = 0; i < MAX_CLIENTS; i++) {
-        client_data **client = client_map_get(clients, i);
+        client_data **client = hm_get(*clients, i);
         if (client && *client) {
-            enet_peer_disconnect_now(server->peers, 0); 
+            enet_peer_disconnect_now(server->peers, 0);
         }
     }
 
     enet_host_destroy(server);
-    FOREACH_HM(client_map, client, clients) {
-        if (client->state == HASH_OCCUPIED) {
+    foreach_hm(client_entry, client, *clients) {
+        if (hm_it_exist(clients, client)) {
             free(client->value->usr_name);
             free(client->value);
         }

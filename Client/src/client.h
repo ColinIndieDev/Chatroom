@@ -24,15 +24,15 @@ typedef struct {
     char *usr_name;
 } client_data;
 
-typedef void client_map;
+HM_CREATE_ENTRY(int, client_data, client_entry)
 
 typedef struct {
     ENetHost *client;
-    client_map *clients;
+    client_entry **clients;
 } thread_data;
 
 void send_packet(ENetPeer *peer, char *data);
 void encrypt_decrypt(const char *in, char *out, size_t len);
 
-void client_init(client_map **clients);
-void client_destroy(client_map **clients);
+void client_init(client_entry **clients);
+void client_destroy(client_entry **clients);

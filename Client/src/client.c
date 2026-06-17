@@ -1,12 +1,10 @@
 #include "client.h"
 #include "window.h"
 
+#include <cpstd/cphash.h>
+
 #include <pthread.h>
 #include <stdio.h>
-
-HASHMAP_DEF(int, client_data *, client_map_real)
-
-client_map_real clients_instance;
 
 ENetHost *client = NULL;
 ENetAddress address;
@@ -26,9 +24,7 @@ void send_packet(ENetPeer *peer, char *data) {
     enet_peer_send(peer, 0, packet);
 }
 
-void parse_data(char *data, client_map **clients) {
-    *clients = &clients_instance;
-
+void parse_data(char *data, client_entry **clients) {
     int type = 0;
     int id = 0;
 
@@ -54,8 +50,7 @@ void parse_data(char *data, client_map **clients) {
             char decrypted_msg[320];
             encrypt_decrypt(encrypted_msg, decrypted_msg,
                             strlen(encrypted_msg));
-            print_msg((*client_map_real_get(*clients, id))->usr_name,
-                      decrypted_msg);
+            print_msg(hm_get(*clients, id)->usr_name, decrypted_msg);
         }
         break;
     case PACKET_JOIN:
@@ -70,10 +65,8 @@ void parse_data(char *data, client_map **clients) {
                 encrypted[i] = (char)byte;
             }
             encrypt_decrypt(encrypted, new_usr, strlen(encrypted));
-            client_data *new_client = malloc(sizeof(client_data));
-            new_client->id = id;
-            new_client->usr_name = strdup(new_usr);
-            client_map_real_put(*clients, id, new_client);
+            client_data new_client = {.id = id, .usr_name = strdup(new_usr)};
+            hm_put(*clients, id, new_client);
 
             char msg[126];
             snprintf(msg, sizeof(msg), "%s joined", new_usr);
@@ -85,10 +78,9 @@ void parse_data(char *data, client_map **clients) {
         break;
     case PACKET_DISCONNECT: {
         char msg[126];
-        snprintf(msg, sizeof(msg), "%s left",
-                 (*client_map_real_get(*clients, id))->usr_name);
+        snprintf(msg, sizeof(msg), "%s left", hm_get(*clients, id)->usr_name);
         print_announcement(msg);
-        client_map_real_remove(*clients, id);
+        hm_remove(*clients, id);
         break;
     }
     case PACKET_SERVER_SHUTDOWN:
@@ -163,17 +155,14 @@ void encrypt_decrypt(const char *in, char *out, size_t len) {
     out[len] = '\0';
 }
 
-void client_init(client_map **clients) {
-    *clients = &clients_instance;
-
-    client_map_real_init(*clients, MAX_CLIENTS);
+void client_init(client_entry **clients) {
+    *clients = hm_init(*clients, MAX_CLIENTS);
 
     if (enet_initialize()) {
         ERROR(stderr, "Failed to init ENet\n");
         exit(-1);
     }
     atexit(enet_deinitialize);
-
     client = enet_host_create(NULL, 1, 1, 0, 0);
     if (!client) {
         ERROR(stderr, "Failed to create client host\n");
@@ -219,16 +208,13 @@ void client_init(client_map **clients) {
     pthread_create(&msg_thread, NULL, msg_loop, (void *)data);
 }
 
-void client_destroy(client_map **clients) {
-    *clients = &clients_instance;
-
-    FOREACH_HM(client_map_real, client, *clients) {
-        if (client->state == HASH_OCCUPIED) {
-            free(client->value->usr_name);
-            free(client->value);
+void client_destroy(client_entry **clients) {
+    foreach_hm(client_entry, client, *clients) {
+        if (hm_it_exist(*clients, client)) {
+            free(client->value.usr_name);
         }
     }
-    client_map_real_destroy(*clients);
+    hm_destroy(*clients);
 
     running = false;
     pthread_cancel(msg_thread);

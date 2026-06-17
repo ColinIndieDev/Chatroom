@@ -19,8 +19,9 @@ typedef struct {
     int id;
     char *usr_name;
 } client_data;
-HASHMAP_DECL(int, client_data *, client_map)
 
-void server_init(client_map *clients);
-void server_destroy(client_map *clients);
-void server_loop(client_map *clients);
+HM_CREATE_ENTRY(int, client_data *, client_entry)
+
+void server_init(client_entry **clients);
+void server_destroy(client_entry **clients);
+void server_loop(client_entry **clients);

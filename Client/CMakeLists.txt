@@ -52,6 +52,10 @@ add_executable(${CMAKE_PROJECT_NAME}
     src/window.c
 )
 
+# CPSTD
+find_package(cpstd REQUIRED)
+target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE cpstd::cpstd)
+
 # ncurses
 set(CURSES_NEED_WIDE TRUE) 
 set(CURSES_NEED_NCURSES TRUE)

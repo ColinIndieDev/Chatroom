@@ -7,14 +7,12 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include <cpstd/cphash.h>
-
 #include "client.h"
 #include "window.h"
 
 EXTERN_CLIENT_H_VARIABLES
 
-client_map *clients = NULL;
+client_entry *clients = NULL;
 
 void program_loop();
 

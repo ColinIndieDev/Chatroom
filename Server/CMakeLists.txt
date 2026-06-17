@@ -51,5 +51,9 @@ add_executable(${CMAKE_PROJECT_NAME}
     src/server.c
 )
 
+# CPSTD
+find_package(cpstd REQUIRED)
+target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE cpstd::cpstd)
+
 # Enet
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE ${enet_SOURCE_DIR}/include)
